@@ -1,8 +1,38 @@
 'use strict';
 
 const soap = require('soap');
-const http = require('soap');
-const request = require('request');
+const https = require('https');
+const axios = require('axios');
+
+class CustomHttpClient extends soap.HttpClient {
+  constructor(pfx, passphrase) {
+    super();
+    this.agent = new https.Agent({
+      pfx,
+      passphrase,
+      rejectUnauthorized: false,
+    });
+  }
+
+  request(url, data, callback, exheaders, exoptions) {
+    const options = {
+      method: data ? 'POST' : 'GET',
+      url,
+      headers: exheaders || {},
+      httpsAgent: this.agent,
+      data,
+      timeout: 20000,
+      responseType: 'text',
+    };
+
+    axios(options)
+      .then(res => callback(null, res.data, res))
+      .catch(err => {
+        const res = err.response || {};
+        callback(err, res.data, res);
+      });
+  }
+}
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
@@ -33,15 +63,15 @@ const createSoapClient = async (url, options, isHttps) => {
   const soapOptions = buildSoapOptions(options);
   const client = await soap.createClientAsync(url, soapOptions);
 
-  if (isHttps) {
+  if (isHttps)
     client.setSecurity(
-      new soap.ClientSSLSecurityPFX(options.certificate, options.password),
+      new soap.ClientSSLSecurityPFX(options.certificate, options.password, {
+        rejectUnauthorized: false,
+      }),
     );
-  }
 
-  if (options.headers) {
+  if (options.headers)
     options.headers.forEach(header => client.addSoapHeader(header));
-  }
 
   return client;
 };
@@ -65,15 +95,16 @@ const buildSoapOptions = options => {
     disableCache: true,
     forceSoap12Headers:
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
-    httpClient: options.httpClient,
+    httpClient: new CustomHttpClient(options.certificate, options.password),
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
     wsdl_options: {
       pfx: options.certificate,
       passphrase: options.password,
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+    },
   };
 };
+
 const getPortByMethodName = (ports, methodName) => {
   return Object.values(ports).find(port => port.binding.methods[methodName]);
 };
@@ -89,7 +120,8 @@ const formatLocation = (location, isHttps, customFormatLocation) => {
 };
 
 const formatUrl = url => {
-  if (!/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url)) return `${url}?wsdl`;
+  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
+
   return url;
 };
 
@@ -105,7 +137,7 @@ const validateParams = (url, methodName, message, options) => {
   }
 
   if (typeof message !== 'object') {
-    throw new TypeError(`Expected a object for message, got ${typeof message}`);
+    throw new TypeError(`Expected an object for message, got ${typeof message}`);
   }
 
   if (options.certificate && !Buffer.isBuffer(options.certificate)) {
@@ -126,14 +158,6 @@ const validateParams = (url, methodName, message, options) => {
         throw new TypeError(`Expected a string for header, got ${typeof header}`);
       }
     });
-  }
-
-  if (options.httpClient && !(options.httpClient instanceof http.HttpClient)) {
-    throw new TypeError('Expected a http.HttpClient for options.httpClient');
-  }
-
-  if (options.proxy && typeof options.proxy !== 'string') {
-    throw new TypeError(`Expected a string for proxy, got ${typeof options.proxy}`);
   }
 
   if (options.rawResponse && typeof options.rawResponse !== 'boolean') {
