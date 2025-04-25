@@ -10,13 +10,14 @@ const communicate = async (url, methodName, message, options = {}) => {
   const certBuffer = options.certificate;
 
   // Requisição com certificado
-  const customRequest = request.defaults({
-    agentOptions: {
-      pfx: certBuffer,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
-  });
+  const customRequest = (opts) => {
+    return new Promise((resolve, reject) => {
+      request(opts, (error, response, body) => {
+        if (error) return reject(error);
+        resolve({ response, body });
+      });
+    });
+  };
 
   const soapOptions = {
     request: customRequest,
