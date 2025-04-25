@@ -1,36 +1,8 @@
 'use strict';
 
 const soap = require('soap');
-const https = require('https');
-const axios = require('axios');
-const { HttpClient } = require('soap/lib/http');
-
-class CustomHttpClient extends HttpClient {
-  request(rurl, data, callback, exheaders, exoptions) {
-    const options = {
-      method: 'POST',
-      url: rurl,
-      data,
-      headers: {
-        'Content-Type': 'application/soap+xml;charset=UTF-8',
-        ...exheaders,
-      },
-      httpsAgent: new https.Agent({
-        pfx: exoptions.pfx,
-        passphrase: exoptions.passphrase,
-        rejectUnauthorized: false, // aceita certificado vencido ou autoassinado
-      }),
-    };
-
-    axios(options)
-      .then(response => {
-        callback(null, response.data, response.status, response.headers);
-      })
-      .catch(err => {
-        callback(err);
-      });
-  }
-}
+const http = require('soap');
+const request = require('request');
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
@@ -49,37 +21,12 @@ const communicate = async (url, methodName, message, options = {}) => {
   return new Promise((resolve, reject) => {
     const callback = (err, result, rawResponse) => {
       if (err) return reject(err);
+
       options.rawResponse ? resolve(rawResponse) : resolve(result);
     };
 
     method(message, callback);
   });
-};
-
-const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => {
-  const service = Object.values(client.wsdl.definitions.services)[0];
-
-  const port = getPortByMethodName(service.ports, methodName);
-  if (!port) throw new Error(`Method: '${methodName}' does not exist in wsdl`);
-
-  const method = port.binding.methods[methodName];
-  const location = formatLocation(port.location, isHttps, customFormatLocation);
-
-  return client._defineMethod(method, location);
-};
-
-const getPortByMethodName = (ports, methodName) => {
-  return Object.values(ports).find(port => port.binding.methods[methodName]);
-};
-
-const formatLocation = (location, isHttps, customFormatLocation) => {
-  location = location.replace(/:80[\/]/, '/');
-
-  if (isHttps && location.startsWith('http:')) {
-    location = location.replace('http:', 'https:');
-  }
-
-  return customFormatLocation ? customFormatLocation(location) : location;
 };
 
 const createSoapClient = async (url, options, isHttps) => {
@@ -96,25 +43,57 @@ const createSoapClient = async (url, options, isHttps) => {
   return client;
 };
 
+const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => {
+  const service = Object.values(client.wsdl.definitions.services)[0];
+
+  const port = getPortByMethodName(service.ports, methodName);
+  if (!port) throw new Error(`Method: '${methodName}' does not exist in wsdl`);
+
+  const method = port.binding.methods[methodName];
+  const location = formatLocation(port.location, isHttps, customFormatLocation);
+
+  return client._defineMethod(method, location);
+};
+
 const buildSoapOptions = options => {
+  const req = options.proxy
+    ? request.defaults({
+        timeout: 20000,
+        proxy: options.proxy,
+        agent: false,
+        pool: { maxSockets: 200 },
+      })
+    : undefined;
+
   return {
     escapeXML: options.escapeXML === true,
     returnFault: true,
     disableCache: true,
     forceSoap12Headers:
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
-    httpClient: new CustomHttpClient(),
+    httpClient: options.httpClient,
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
-    wsdl_options: {
-      pfx: options.certificate,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
+    wsdl_options: { pfx: options.certificate, passphrase: options.password },
+    request: req,
   };
 };
 
+const getPortByMethodName = (ports, methodName) => {
+  return Object.values(ports).find(port => port.binding.methods[methodName]);
+};
+
+const formatLocation = (location, isHttps, customFormatLocation) => {
+  location = location.replace(/:80[\/]/, '/');
+
+  if (isHttps && location.startsWith('http:')) {
+    location = location.replace('http:', 'https:');
+  }
+
+  return customFormatLocation ? customFormatLocation(location) : location;
+};
+
 const formatUrl = url => {
-  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}`;
+  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
 
   return url;
 };

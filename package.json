@@ -25,7 +25,6 @@
 		"soap"
 	],
 	"dependencies": {
-		"axios": "^1.9.0",
 		"request": "^2.88.2",
 		"soap": "^1.1.11"
 	},
