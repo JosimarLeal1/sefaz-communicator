@@ -33,12 +33,15 @@ const createSoapClient = async (url, options, isHttps) => {
   const soapOptions = buildSoapOptions(options);
   const client = await soap.createClientAsync(url, soapOptions);
 
-  if (isHttps)
+  if (isHttps) {
     client.setSecurity(
       new soap.ClientSSLSecurityPFX(options.certificate, options.password),
     );
-  if (options.headers)
+  }
+
+  if (options.headers) {
     options.headers.forEach(header => client.addSoapHeader(header));
+  }
 
   return client;
 };
@@ -56,14 +59,19 @@ const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => 
 };
 
 const buildSoapOptions = options => {
-  const req = options.proxy
-    ? request.defaults({
-        timeout: 20000,
-        proxy: options.proxy,
-        agent: false,
-        pool: { maxSockets: 200 },
-      })
-    : undefined;
+  const agentOptions = {
+    pfx: options.certificate,
+    passphrase: options.password,
+    rejectUnauthorized: false, // cuidado com isso em produção!
+  };
+
+  const req = request.defaults({
+    timeout: 20000,
+    proxy: options.proxy,
+    agentOptions,
+    agent: false,
+    pool: { maxSockets: 200 },
+  });
 
   return {
     escapeXML: options.escapeXML === true,
@@ -73,7 +81,7 @@ const buildSoapOptions = options => {
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
     httpClient: options.httpClient,
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
-    wsdl_options: { pfx: options.certificate, passphrase: options.password },
+    wsdl_options: { pfx: options.certificate, passphrase: options.password, agentOptions },
     request: req,
   };
 };
@@ -93,8 +101,7 @@ const formatLocation = (location, isHttps, customFormatLocation) => {
 };
 
 const formatUrl = url => {
-  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
-
+  if (!/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url)) return `${url}?wsdl`;
   return url;
 };
 
