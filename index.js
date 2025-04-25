@@ -1,38 +1,44 @@
 'use strict';
 
+const fs = require('fs');
 const soap = require('soap');
 const request = require('request');
-const RequestHttpClient = require('soap/lib/http.js').RequestHttpClient;
 
+// Função principal
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
 
   const formattedUrl = formatUrl(url);
-  const isHttps = options.certificate && options.password;
 
-  const client = await createSoapClient(formattedUrl, options, isHttps);
-  const method = createSoapMethod(
-    client,
-    methodName,
-    isHttps,
-    options.customFormatLocation,
-  );
+  const client = await createSoapClient(formattedUrl, options);
+  const method = getSoapMethod(client, methodName);
 
   return new Promise((resolve, reject) => {
     method(message, (err, result, rawResponse) => {
       if (err) return reject(err);
-      options.rawResponse ? resolve(rawResponse) : resolve(result);
+      resolve(options.rawResponse ? rawResponse : result);
     });
   });
 };
 
-const createSoapClient = async (url, options, isHttps) => {
-  const soapOptions = buildSoapOptions(options);
+// Criação do cliente SOAP
+const createSoapClient = async (url, options) => {
+  const certBuffer = options.certificate;
+  const soapOptions = {
+    request: request.defaults({
+      agentOptions: {
+        pfx: certBuffer,
+        passphrase: options.password,
+        rejectUnauthorized: false,
+      },
+    }),
+  };
+
   const client = await soap.createClientAsync(url, soapOptions);
 
-  if (isHttps) {
+  if (certBuffer) {
     client.setSecurity(
-      new soap.ClientSSLSecurityPFX(options.certificate, options.password, {
+      new soap.ClientSSLSecurityPFX(certBuffer, options.password, {
         rejectUnauthorized: false,
       })
     );
@@ -45,74 +51,35 @@ const createSoapClient = async (url, options, isHttps) => {
   return client;
 };
 
-const buildSoapOptions = options => {
-  const agentOptions = {
-    pfx: options.certificate,
-    passphrase: options.password,
-    rejectUnauthorized: false,
-  };
-
-  // Custom HTTP client using request with certificate
-  const httpClient = new RequestHttpClient({
-    request: request.defaults({
-      timeout: 20000,
-      agentOptions,
-    }),
-  });
-
-  return {
-    escapeXML: options.escapeXML === true,
-    returnFault: true,
-    disableCache: true,
-    forceSoap12Headers: options.forceSoap12Headers !== false,
-    httpClient,
-    wsdl_options: {
-      pfx: options.certificate,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
-    headers: {
-      'User-Agent': 'sefaz-communicator/1.0',
-      'Content-Type': options.contentType || 'application/soap+xml',
-    },
-  };
-};
-
-const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => {
+// Localiza o método no WSDL
+const getSoapMethod = (client, methodName) => {
   const service = Object.values(client.wsdl.definitions.services)[0];
-  const port = getPortByMethodName(service.ports, methodName);
-  if (!port) throw new Error(`Method: '${methodName}' does not exist in wsdl`);
+  const port = Object.values(service.ports).find(p => p.binding.methods[methodName]);
 
-  const method = port.binding.methods[methodName];
-  const location = formatLocation(port.location, isHttps, customFormatLocation);
-
-  return client._defineMethod(method, location);
-};
-
-const getPortByMethodName = (ports, methodName) => {
-  return Object.values(ports).find(port => port.binding.methods[methodName]);
-};
-
-const formatLocation = (location, isHttps, customFormatLocation) => {
-  location = location.replace(/:80[\/]/, '/');
-  if (isHttps && location.startsWith('http:')) {
-    location = location.replace('http:', 'https:');
+  if (!port) {
+    throw new Error(`Method '${methodName}' not found in WSDL`);
   }
-  return customFormatLocation ? customFormatLocation(location) : location;
+
+  const location = port.location.replace(':80/', '/');
+  return client._defineMethod(port.binding.methods[methodName], location);
 };
 
+// Adiciona ?wsdl se necessário
 const formatUrl = url => {
-  return /^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) ? url : `${url}?wsdl`;
+  return url.match(/\?wsdl$/i) ? url : `${url}?wsdl`;
 };
 
+// Validação de parâmetros
 const validateParams = (url, methodName, message, options) => {
-  if (typeof url !== 'string') throw new TypeError(`Expected string for url, got ${typeof url}`);
-  if (typeof methodName !== 'string') throw new TypeError(`Expected string for methodName, got ${typeof methodName}`);
-  if (typeof message !== 'object') throw new TypeError(`Expected object for message, got ${typeof message}`);
-  if (options.certificate && !Buffer.isBuffer(options.certificate)) throw new TypeError(`Expected Buffer for certificate, got ${typeof options.certificate}`);
-  if (options.password && typeof options.password !== 'string') throw new TypeError(`Expected string for password, got ${typeof options.password}`);
+  if (typeof url !== 'string') throw new TypeError('url must be a string');
+  if (typeof methodName !== 'string') throw new TypeError('methodName must be a string');
+  if (typeof message !== 'object') throw new TypeError('message must be an object');
+  if (options.certificate && !Buffer.isBuffer(options.certificate)) {
+    throw new TypeError('certificate must be a Buffer');
+  }
+  if (options.password && typeof options.password !== 'string') {
+    throw new TypeError('password must be a string');
+  }
 };
 
-module.exports = {
-  communicate,
-};
+module.exports = { communicate };
