@@ -73,7 +73,7 @@ const buildSoapOptions = options => {
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
     httpClient: options.httpClient,
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
-    wsdl_options: { pfx: options.certificate, passphrase: options.password },
+    wsdl_options: { pfx: options.certificate, passphrase: options.password, rejectUnauthorized: false },
     request: req,
   };
 };
