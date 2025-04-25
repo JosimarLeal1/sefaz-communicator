@@ -1,15 +1,12 @@
 'use strict';
 
-const fs = require('fs');
 const soap = require('soap');
-const request = require('request');
+const fs = require('fs');
 
-// Função principal
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
 
   const formattedUrl = formatUrl(url);
-
   const client = await createSoapClient(formattedUrl, options);
   const method = getSoapMethod(client, methodName);
 
@@ -21,17 +18,15 @@ const communicate = async (url, methodName, message, options = {}) => {
   });
 };
 
-// Criação do cliente SOAP
 const createSoapClient = async (url, options) => {
   const certBuffer = options.certificate;
+
   const soapOptions = {
-    request: request.defaults({
-      agentOptions: {
-        pfx: certBuffer,
-        passphrase: options.password,
-        rejectUnauthorized: false,
-      },
-    }),
+    wsdl_options: {
+      pfx: certBuffer,
+      passphrase: options.password,
+      rejectUnauthorized: false,
+    },
   };
 
   const client = await soap.createClientAsync(url, soapOptions);
@@ -51,7 +46,6 @@ const createSoapClient = async (url, options) => {
   return client;
 };
 
-// Localiza o método no WSDL
 const getSoapMethod = (client, methodName) => {
   const service = Object.values(client.wsdl.definitions.services)[0];
   const port = Object.values(service.ports).find(p => p.binding.methods[methodName]);
@@ -60,16 +54,13 @@ const getSoapMethod = (client, methodName) => {
     throw new Error(`Method '${methodName}' not found in WSDL`);
   }
 
-  const location = port.location.replace(':80/', '/');
-  return client._defineMethod(port.binding.methods[methodName], location);
+  return client._defineMethod(port.binding.methods[methodName], port.location);
 };
 
-// Adiciona ?wsdl se necessário
 const formatUrl = url => {
   return url.match(/\?wsdl$/i) ? url : `${url}?wsdl`;
 };
 
-// Validação de parâmetros
 const validateParams = (url, methodName, message, options) => {
   if (typeof url !== 'string') throw new TypeError('url must be a string');
   if (typeof methodName !== 'string') throw new TypeError('methodName must be a string');
