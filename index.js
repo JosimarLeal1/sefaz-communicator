@@ -1,8 +1,6 @@
 'use strict';
 
 const soap = require('soap');
-const http = require('soap');
-const request = require('request');
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
@@ -37,6 +35,7 @@ const createSoapClient = async (url, options, isHttps) => {
     client.setSecurity(
       new soap.ClientSSLSecurityPFX(options.certificate, options.password),
     );
+
   if (options.headers)
     options.headers.forEach(header => client.addSoapHeader(header));
 
@@ -56,32 +55,27 @@ const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => 
 };
 
 const buildSoapOptions = options => {
-  const req = request.defaults({
-    timeout: 20000,
-    agentOptions: {
-      pfx: options.certificate,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
-  });
-
   return {
     escapeXML: options.escapeXML === true,
     returnFault: true,
     disableCache: true,
     forceSoap12Headers:
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
-    httpClient: options.httpClient,
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
     wsdl_options: {
       pfx: options.certificate,
       passphrase: options.password,
       rejectUnauthorized: false,
+      strictSSL: false,
+      agentOptions: {
+        pfx: options.certificate,
+        passphrase: options.password,
+        rejectUnauthorized: false,
+      },
+      proxy: options.proxy,
     },
-    request: req,
   };
 };
-
 
 const getPortByMethodName = (ports, methodName) => {
   return Object.values(ports).find(port => port.binding.methods[methodName]);
@@ -115,7 +109,7 @@ const validateParams = (url, methodName, message, options) => {
   }
 
   if (typeof message !== 'object') {
-    throw new TypeError(`Expected a object for message, got ${typeof message}`);
+    throw new TypeError(`Expected an object for message, got ${typeof message}`);
   }
 
   if (options.certificate && !Buffer.isBuffer(options.certificate)) {
@@ -136,10 +130,6 @@ const validateParams = (url, methodName, message, options) => {
         throw new TypeError(`Expected a string for header, got ${typeof header}`);
       }
     });
-  }
-
-  if (options.httpClient && !(options.httpClient instanceof http.HttpClient)) {
-    throw new TypeError('Expected a http.HttpClient for options.httpClient');
   }
 
   if (options.proxy && typeof options.proxy !== 'string') {
