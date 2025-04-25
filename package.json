@@ -10,7 +10,7 @@
 		"url": "https://dopster.io"
 	},
 	"engines": {
-		"node": ">=8"
+		"node": ">=22"
 	},
 	"scripts": {
 		"test": "ava"
