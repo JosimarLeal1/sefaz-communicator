@@ -1,7 +1,8 @@
 'use strict';
 
 const soap = require('soap');
-const https = require('https');
+const request = require('request');
+const RequestHttpClient = require('soap/lib/http.js').RequestHttpClient;
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
@@ -18,12 +19,10 @@ const communicate = async (url, methodName, message, options = {}) => {
   );
 
   return new Promise((resolve, reject) => {
-    const callback = (err, result, rawResponse) => {
+    method(message, (err, result, rawResponse) => {
       if (err) return reject(err);
       options.rawResponse ? resolve(rawResponse) : resolve(result);
-    };
-
-    method(message, callback);
+    });
   });
 };
 
@@ -35,21 +34,30 @@ const createSoapClient = async (url, options, isHttps) => {
     client.setSecurity(
       new soap.ClientSSLSecurityPFX(options.certificate, options.password, {
         rejectUnauthorized: false,
-      }),
+      })
     );
   }
 
-  if (options.headers)
+  if (options.headers) {
     options.headers.forEach(header => client.addSoapHeader(header));
+  }
 
   return client;
 };
 
 const buildSoapOptions = options => {
-  const httpsAgent = new https.Agent({
+  const agentOptions = {
     pfx: options.certificate,
     passphrase: options.password,
     rejectUnauthorized: false,
+  };
+
+  // Custom HTTP client using request with certificate
+  const httpClient = new RequestHttpClient({
+    request: request.defaults({
+      timeout: 20000,
+      agentOptions,
+    }),
   });
 
   return {
@@ -57,10 +65,15 @@ const buildSoapOptions = options => {
     returnFault: true,
     disableCache: true,
     forceSoap12Headers: options.forceSoap12Headers !== false,
-    headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
+    httpClient,
     wsdl_options: {
-      agent: httpsAgent,
+      pfx: options.certificate,
+      passphrase: options.password,
       rejectUnauthorized: false,
+    },
+    headers: {
+      'User-Agent': 'sefaz-communicator/1.0',
+      'Content-Type': options.contentType || 'application/soap+xml',
     },
   };
 };
@@ -102,7 +115,4 @@ const validateParams = (url, methodName, message, options) => {
 
 module.exports = {
   communicate,
-  buildSoapOptions,
-  formatLocation,
-  formatUrl,
 };
