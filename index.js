@@ -9,7 +9,7 @@ const communicate = async (url, methodName, message, options = {}) => {
   const formattedUrl = formatUrl(url);
   const certBuffer = options.certificate;
 
-  // Requisições com certificado desde o WSDL
+  // Requisição com certificado
   const customRequest = request.defaults({
     agentOptions: {
       pfx: certBuffer,
@@ -27,8 +27,17 @@ const communicate = async (url, methodName, message, options = {}) => {
     },
   };
 
-  const client = await soap.createClientAsync(formattedUrl, soapOptions);
+  console.log('Iniciando a criação do cliente SOAP para o WSDL...');
+  let client;
+  try {
+    client = await soap.createClientAsync(formattedUrl, soapOptions);
+    console.log('Cliente SOAP criado com sucesso!');
+  } catch (error) {
+    console.error('Erro ao criar o cliente SOAP:', error);
+    throw error;
+  }
 
+  // Adicionando segurança ao cliente SOAP
   client.setSecurity(
     new soap.ClientSSLSecurityPFX(certBuffer, options.password, {
       rejectUnauthorized: false,
@@ -41,9 +50,16 @@ const communicate = async (url, methodName, message, options = {}) => {
 
   const method = getSoapMethod(client, methodName);
 
+  console.log(`Chamando o método SOAP: ${methodName}...`);
   return new Promise((resolve, reject) => {
     method(message, (err, result, rawResponse) => {
-      if (err) return reject(err);
+      if (err) {
+        console.error('Erro na chamada do método SOAP:', err);
+        return reject(err);
+      }
+
+      console.log('Resposta recebida do método SOAP');
+      console.log('Resultado:', result);
       resolve(options.rawResponse ? rawResponse : result);
     });
   });
@@ -53,7 +69,7 @@ const getSoapMethod = (client, methodName) => {
   const service = Object.values(client.wsdl.definitions.services)[0];
   const port = Object.values(service.ports).find(p => p.binding.methods[methodName]);
 
-  if (!port) throw new Error(`Method '${methodName}' not found in WSDL`);
+  if (!port) throw new Error(`Método '${methodName}' não encontrado no WSDL`);
 
   return client._defineMethod(port.binding.methods[methodName], port.location);
 };
@@ -63,14 +79,14 @@ const formatUrl = url => {
 };
 
 const validateParams = (url, methodName, message, options) => {
-  if (typeof url !== 'string') throw new TypeError('url must be a string');
-  if (typeof methodName !== 'string') throw new TypeError('methodName must be a string');
-  if (typeof message !== 'object') throw new TypeError('message must be an object');
+  if (typeof url !== 'string') throw new TypeError('url deve ser uma string');
+  if (typeof methodName !== 'string') throw new TypeError('methodName deve ser uma string');
+  if (typeof message !== 'object') throw new TypeError('message deve ser um objeto');
   if (options.certificate && !Buffer.isBuffer(options.certificate)) {
-    throw new TypeError('certificate must be a Buffer');
+    throw new TypeError('certificate deve ser um Buffer');
   }
   if (options.password && typeof options.password !== 'string') {
-    throw new TypeError('password must be a string');
+    throw new TypeError('password deve ser uma string');
   }
 };
 
