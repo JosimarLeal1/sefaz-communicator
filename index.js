@@ -89,8 +89,55 @@ const buildSoapOptions = options => {
   };
 };
 
-// Demais funções auxiliares: formatUrl, formatLocation, validateParams...
-// (mantém as mesmas que você já tem no seu código)
+const validateParams = (url, methodName, message, options) => {
+  if (typeof url !== 'string') {
+    throw new TypeError(`Expected a string for url, got ${typeof url}`);
+  }
+
+  if (typeof methodName !== 'string') {
+    throw new TypeError(
+      `Expected a string for methodName, got ${typeof methodName}`,
+    );
+  }
+
+  if (typeof message !== 'object') {
+    throw new TypeError(`Expected a object for message, got ${typeof message}`);
+  }
+
+  if (options.certificate && !Buffer.isBuffer(options.certificate)) {
+    throw new TypeError(
+      `Expected a Buffer for certificate, got ${typeof options.certificate}`,
+    );
+  }
+
+  if (options.password && typeof options.password !== 'string') {
+    throw new TypeError(
+      `Expected a string for password, got ${typeof options.password}`,
+    );
+  }
+
+  if (options.headers) {
+    options.headers.forEach(header => {
+      if (typeof header !== 'string') {
+        throw new TypeError(`Expected a string for header, got ${typeof header}`);
+      }
+    });
+  }
+
+  if (options.httpClient && !(options.httpClient instanceof http.HttpClient)) {
+    throw new TypeError('Expected a http.HttpClient for options.httpClient');
+  }
+
+  if (options.proxy && typeof options.proxy !== 'string') {
+    throw new TypeError(`Expected a string for proxy, got ${typeof options.proxy}`);
+  }
+
+  if (options.rawResponse && typeof options.rawResponse !== 'boolean') {
+    throw new TypeError(
+      `Expected a boolean for rawResponse, got ${typeof options.rawResponse}`,
+    );
+  }
+};
 
 module.exports = {
   communicate,
