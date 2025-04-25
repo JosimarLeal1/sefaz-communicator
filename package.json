@@ -1,13 +1,13 @@
 {
 	"name": "sefaz-communicator",
-	"version": "1.4.1",
+	"version": "2.0.0",
 	"description": "Simple way to communicate with SEFAZ SOAP web services",
 	"license": "MIT",
-	"repository": "andreiox/sefaz-communicator",
+	"repository": "josimar/sefaz-communicator",
 	"author": {
-		"name": "Andre Macedo",
-		"email": "contato@andremacedo.dev",
-		"url": "https://andremacedo.dev"
+		"name": "Josimar Leal",
+		"email": "josimar.leal@dopster.io",
+		"url": "https://dopster.io"
 	},
 	"engines": {
 		"node": ">=8"
@@ -25,7 +25,7 @@
 		"soap"
 	],
 	"dependencies": {
-		"soap": "^0.29.0"
+		"soap": "^1.1.11"
 	},
 	"devDependencies": {
 		"ava": "^2.1.0"
