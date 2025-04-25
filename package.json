@@ -10,7 +10,7 @@
 		"url": "https://dopster.io"
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=8"
 	},
 	"scripts": {
 		"test": "ava"
@@ -25,8 +25,7 @@
 		"soap"
 	],
 	"dependencies": {
-		"request": "^2.88.2",
-		"soap": "^1.1.11"
+		"soap": "^0.29.0"
 	},
 	"devDependencies": {
 		"ava": "^2.1.0"

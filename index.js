@@ -1,95 +1,156 @@
 'use strict';
 
 const soap = require('soap');
+const http = require('soap');
 const request = require('request');
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
 
   const formattedUrl = formatUrl(url);
-  const certBuffer = options.certificate;
+  const isHttps = options.certificate && options.password;
 
-  // Requisição com certificado
-  const customRequest = (opts) => {
-    return new Promise((resolve, reject) => {
-      request(opts, (error, response, body) => {
-        if (error) return reject(error);
-        resolve({ response, body });
-      });
-    });
-  };
-
-  const soapOptions = {
-    request: customRequest,
-    wsdl_options: {
-      pfx: certBuffer,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
-  };
-
-  console.log('Iniciando a criação do cliente SOAP para o WSDL...');
-  let client;
-  try {
-    client = await soap.createClientAsync(formattedUrl, soapOptions);
-    console.log('Cliente SOAP criado com sucesso!');
-  } catch (error) {
-    console.error('Erro ao criar o cliente SOAP:', error);
-    throw error;
-  }
-
-  // Adicionando segurança ao cliente SOAP
-  client.setSecurity(
-    new soap.ClientSSLSecurityPFX(certBuffer, options.password, {
-      rejectUnauthorized: false,
-    }),
+  const client = await createSoapClient(formattedUrl, options, isHttps);
+  const method = createSoapMethod(
+    client,
+    methodName,
+    isHttps,
+    options.customFormatLocation,
   );
 
-  if (options.headers) {
-    options.headers.forEach(header => client.addSoapHeader(header));
-  }
-
-  const method = getSoapMethod(client, methodName);
-
-  console.log(`Chamando o método SOAP: ${methodName}...`);
   return new Promise((resolve, reject) => {
-    method(message, (err, result, rawResponse) => {
-      if (err) {
-        console.error('Erro na chamada do método SOAP:', err);
-        return reject(err);
-      }
+    const callback = (err, result, rawResponse) => {
+      if (err) return reject(err);
 
-      console.log('Resposta recebida do método SOAP');
-      console.log('Resultado:', result);
-      resolve(options.rawResponse ? rawResponse : result);
-    });
+      options.rawResponse ? resolve(rawResponse) : resolve(result);
+    };
+
+    method(message, callback);
   });
 };
 
-const getSoapMethod = (client, methodName) => {
+const createSoapClient = async (url, options, isHttps) => {
+  const soapOptions = buildSoapOptions(options);
+  const client = await soap.createClientAsync(url, soapOptions);
+
+  if (isHttps)
+    client.setSecurity(
+      new soap.ClientSSLSecurityPFX(options.certificate, options.password),
+    );
+  if (options.headers)
+    options.headers.forEach(header => client.addSoapHeader(header));
+
+  return client;
+};
+
+const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => {
   const service = Object.values(client.wsdl.definitions.services)[0];
-  const port = Object.values(service.ports).find(p => p.binding.methods[methodName]);
 
-  if (!port) throw new Error(`Método '${methodName}' não encontrado no WSDL`);
+  const port = getPortByMethodName(service.ports, methodName);
+  if (!port) throw new Error(`Method: '${methodName}' does not exist in wsdl`);
 
-  return client._defineMethod(port.binding.methods[methodName], port.location);
+  const method = port.binding.methods[methodName];
+  const location = formatLocation(port.location, isHttps, customFormatLocation);
+
+  return client._defineMethod(method, location);
+};
+
+const buildSoapOptions = options => {
+  const req = options.proxy
+    ? request.defaults({
+        timeout: 20000,
+        proxy: options.proxy,
+        agent: false,
+        pool: { maxSockets: 200 },
+      })
+    : undefined;
+
+  return {
+    escapeXML: options.escapeXML === true,
+    returnFault: true,
+    disableCache: true,
+    forceSoap12Headers:
+      options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
+    httpClient: options.httpClient,
+    headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
+    wsdl_options: { pfx: options.certificate, passphrase: options.password },
+    request: req,
+  };
+};
+
+const getPortByMethodName = (ports, methodName) => {
+  return Object.values(ports).find(port => port.binding.methods[methodName]);
+};
+
+const formatLocation = (location, isHttps, customFormatLocation) => {
+  location = location.replace(/:80[\/]/, '/');
+
+  if (isHttps && location.startsWith('http:')) {
+    location = location.replace('http:', 'https:');
+  }
+
+  return customFormatLocation ? customFormatLocation(location) : location;
 };
 
 const formatUrl = url => {
-  // return url.match(/\?wsdl$/i) ? url : `${url}?wsdl`;
-  return url.match(/\?wsdl$/i) ? url : `${url}`;
+  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
+
+  return url;
 };
 
 const validateParams = (url, methodName, message, options) => {
-  if (typeof url !== 'string') throw new TypeError('url deve ser uma string');
-  if (typeof methodName !== 'string') throw new TypeError('methodName deve ser uma string');
-  if (typeof message !== 'object') throw new TypeError('message deve ser um objeto');
-  if (options.certificate && !Buffer.isBuffer(options.certificate)) {
-    throw new TypeError('certificate deve ser um Buffer');
+  if (typeof url !== 'string') {
+    throw new TypeError(`Expected a string for url, got ${typeof url}`);
   }
+
+  if (typeof methodName !== 'string') {
+    throw new TypeError(
+      `Expected a string for methodName, got ${typeof methodName}`,
+    );
+  }
+
+  if (typeof message !== 'object') {
+    throw new TypeError(`Expected a object for message, got ${typeof message}`);
+  }
+
+  if (options.certificate && !Buffer.isBuffer(options.certificate)) {
+    throw new TypeError(
+      `Expected a Buffer for certificate, got ${typeof options.certificate}`,
+    );
+  }
+
   if (options.password && typeof options.password !== 'string') {
-    throw new TypeError('password deve ser uma string');
+    throw new TypeError(
+      `Expected a string for password, got ${typeof options.password}`,
+    );
+  }
+
+  if (options.headers) {
+    options.headers.forEach(header => {
+      if (typeof header !== 'string') {
+        throw new TypeError(`Expected a string for header, got ${typeof header}`);
+      }
+    });
+  }
+
+  if (options.httpClient && !(options.httpClient instanceof http.HttpClient)) {
+    throw new TypeError('Expected a http.HttpClient for options.httpClient');
+  }
+
+  if (options.proxy && typeof options.proxy !== 'string') {
+    throw new TypeError(`Expected a string for proxy, got ${typeof options.proxy}`);
+  }
+
+  if (options.rawResponse && typeof options.rawResponse !== 'boolean') {
+    throw new TypeError(
+      `Expected a boolean for rawResponse, got ${typeof options.rawResponse}`,
+    );
   }
 };
 
-module.exports = { communicate };
+module.exports = {
+  communicate,
+  buildSoapOptions,
+  formatLocation,
+  formatUrl,
+};
