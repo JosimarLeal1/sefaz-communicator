@@ -1,13 +1,44 @@
 'use strict';
 
 const soap = require('soap');
-const fs = require('fs');
+const request = require('request');
 
 const communicate = async (url, methodName, message, options = {}) => {
   validateParams(url, methodName, message, options);
 
   const formattedUrl = formatUrl(url);
-  const client = await createSoapClient(formattedUrl, options);
+  const certBuffer = options.certificate;
+
+  // Requisições com certificado desde o WSDL
+  const customRequest = request.defaults({
+    agentOptions: {
+      pfx: certBuffer,
+      passphrase: options.password,
+      rejectUnauthorized: false,
+    },
+  });
+
+  const soapOptions = {
+    request: customRequest,
+    wsdl_options: {
+      pfx: certBuffer,
+      passphrase: options.password,
+      rejectUnauthorized: false,
+    },
+  };
+
+  const client = await soap.createClientAsync(formattedUrl, soapOptions);
+
+  client.setSecurity(
+    new soap.ClientSSLSecurityPFX(certBuffer, options.password, {
+      rejectUnauthorized: false,
+    }),
+  );
+
+  if (options.headers) {
+    options.headers.forEach(header => client.addSoapHeader(header));
+  }
+
   const method = getSoapMethod(client, methodName);
 
   return new Promise((resolve, reject) => {
@@ -18,41 +49,11 @@ const communicate = async (url, methodName, message, options = {}) => {
   });
 };
 
-const createSoapClient = async (url, options) => {
-  const certBuffer = options.certificate;
-
-  const soapOptions = {
-    wsdl_options: {
-      pfx: certBuffer,
-      passphrase: options.password,
-      rejectUnauthorized: false,
-    },
-  };
-
-  const client = await soap.createClientAsync(url, soapOptions);
-
-  if (certBuffer) {
-    client.setSecurity(
-      new soap.ClientSSLSecurityPFX(certBuffer, options.password, {
-        rejectUnauthorized: false,
-      })
-    );
-  }
-
-  if (options.headers) {
-    options.headers.forEach(header => client.addSoapHeader(header));
-  }
-
-  return client;
-};
-
 const getSoapMethod = (client, methodName) => {
   const service = Object.values(client.wsdl.definitions.services)[0];
   const port = Object.values(service.ports).find(p => p.binding.methods[methodName]);
 
-  if (!port) {
-    throw new Error(`Method '${methodName}' not found in WSDL`);
-  }
+  if (!port) throw new Error(`Method '${methodName}' not found in WSDL`);
 
   return client._defineMethod(port.binding.methods[methodName], port.location);
 };
