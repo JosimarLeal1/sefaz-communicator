@@ -76,7 +76,8 @@ const getSoapMethod = (client, methodName) => {
 };
 
 const formatUrl = url => {
-  return url.match(/\?wsdl$/i) ? url : `${url}?wsdl`;
+  // return url.match(/\?wsdl$/i) ? url : `${url}?wsdl`;
+  return url.match(/\?wsdl$/i) ? url : `${url}`;
 };
 
 const validateParams = (url, methodName, message, options) => {
