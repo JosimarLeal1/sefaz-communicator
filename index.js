@@ -59,20 +59,6 @@ const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => 
 };
 
 const buildSoapOptions = options => {
-  const agentOptions = {
-    pfx: options.certificate,
-    passphrase: options.password,
-    rejectUnauthorized: false, // cuidado com isso em produção!
-  };
-
-  const req = request.defaults({
-    timeout: 20000,
-    proxy: options.proxy,
-    agentOptions,
-    agent: false,
-    pool: { maxSockets: 200 },
-  });
-
   return {
     escapeXML: options.escapeXML === true,
     returnFault: true,
@@ -81,11 +67,13 @@ const buildSoapOptions = options => {
       options.forceSoap12Headers === undefined ? true : options.forceSoap12Headers,
     httpClient: options.httpClient,
     headers: { 'Content-Type': options.contentType || 'application/soap+xml' },
-    wsdl_options: { pfx: options.certificate, passphrase: options.password, agentOptions },
-    request: req,
+    wsdl_options: {
+      pfx: options.certificate,
+      passphrase: options.password,
+      rejectUnauthorized: false
+    }
   };
 };
-
 const getPortByMethodName = (ports, methodName) => {
   return Object.values(ports).find(port => port.binding.methods[methodName]);
 };
