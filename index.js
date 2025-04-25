@@ -56,15 +56,39 @@ const communicate = async (url, methodName, message, options = {}) => {
   });
 };
 
+const createSoapMethod = (client, methodName, isHttps, customFormatLocation) => {
+  const service = Object.values(client.wsdl.definitions.services)[0];
+
+  const port = getPortByMethodName(service.ports, methodName);
+  if (!port) throw new Error(`Method: '${methodName}' does not exist in wsdl`);
+
+  const method = port.binding.methods[methodName];
+  const location = formatLocation(port.location, isHttps, customFormatLocation);
+
+  return client._defineMethod(method, location);
+};
+
+const getPortByMethodName = (ports, methodName) => {
+  return Object.values(ports).find(port => port.binding.methods[methodName]);
+};
+
+const formatLocation = (location, isHttps, customFormatLocation) => {
+  location = location.replace(/:80[\/]/, '/');
+
+  if (isHttps && location.startsWith('http:')) {
+    location = location.replace('http:', 'https:');
+  }
+
+  return customFormatLocation ? customFormatLocation(location) : location;
+};
+
 const createSoapClient = async (url, options, isHttps) => {
   const soapOptions = buildSoapOptions(options);
   const client = await soap.createClientAsync(url, soapOptions);
 
   if (isHttps)
     client.setSecurity(
-      new soap.ClientSSLSecurityPFX(options.certificate, options.password, {
-        rejectUnauthorized: false,
-      }),
+      new soap.ClientSSLSecurityPFX(options.certificate, options.password),
     );
   if (options.headers)
     options.headers.forEach(header => client.addSoapHeader(header));
@@ -90,7 +114,7 @@ const buildSoapOptions = options => {
 };
 
 const formatUrl = url => {
-  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
+  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}`;
 
   return url;
 };
@@ -147,4 +171,7 @@ const validateParams = (url, methodName, message, options) => {
 
 module.exports = {
   communicate,
+  buildSoapOptions,
+  formatLocation,
+  formatUrl,
 };
