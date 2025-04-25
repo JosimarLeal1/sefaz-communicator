@@ -89,6 +89,12 @@ const buildSoapOptions = options => {
   };
 };
 
+const formatUrl = url => {
+  if (/^.*[?]{1}.*(wsdl|WSDL|Wsdl){1}$/.test(url) === false) return `${url}?wsdl`;
+
+  return url;
+};
+
 const validateParams = (url, methodName, message, options) => {
   if (typeof url !== 'string') {
     throw new TypeError(`Expected a string for url, got ${typeof url}`);
